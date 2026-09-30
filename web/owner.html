@@ -1,0 +1,58 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0B0F0E"><title>FootTime — Espace terrain</title>
+<style>
+:root{--g:#16A34A;--gd:#0F6B38;--k:#0B0F0E;--c:#F7F8F5;--gr:#9CA3AF}
+*{box-sizing:border-box;margin:0}body{font-family:system-ui,sans-serif;background:var(--c);color:var(--k);padding-bottom:40px}
+header{background:var(--k);padding:10px 16px}header img{height:44px;display:block}main{padding:16px;max-width:620px;margin:auto}
+h2{margin:4px 0 8px}.muted{color:var(--gr);font-size:14px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;margin:12px 0;padding:14px}
+input,select{width:100%;padding:12px;border:1px solid #d1d5db;border-radius:10px;margin:6px 0;font-size:16px;background:#fff}
+.btn{background:var(--g);color:#fff;border:0;border-radius:10px;padding:14px;width:100%;font-size:16px;font-weight:600;margin-top:8px}
+.row{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid #eef0ee;font-size:15px}.row:last-child{border:0}
+.free{color:var(--gr)}.tag{display:inline-block;padding:2px 8px;border-radius:99px;background:#dcfce7;color:var(--gd);font-size:12px}
+.kpi{display:grid;grid-template-columns:1fr 1fr;gap:10px}.kpi b{font-size:18px;display:block}
+</style></head><body>
+<header><img src="assets/logo.png" alt="FootTime"></header><main id="app"></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="config.js"></script>
+<script>
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY),$=s=>document.querySelector(s),app=$('#app');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fcfa=n=>Number(n||0).toLocaleString('fr-FR')+' FCFA',hh=h=>String(h%24).padStart(2,'0')+'h';
+const LB={paiement_en_attente:'Paiement en attente',confirmee:'Confirmée',terminee:'Terminée'};
+let PITCHES=[];
+async function init(){
+ const{data:{session}}=await sb.auth.getSession();if(!session)return login();
+ const uid=session.user.id;
+ const{data:ow}=await sb.from('owners').select('id').eq('user_id',uid);
+ const{data:pm}=await sb.from('pitch_managers').select('pitch_id').eq('user_id',uid).eq('status','actif');
+ const oids=(ow||[]).map(o=>o.id),pids=(pm||[]).map(m=>m.pitch_id);
+ const{data:all}=await sb.from('pitches').select('id,name,owner_id,opening_time,closing_time');
+ PITCHES=(all||[]).filter(p=>oids.includes(p.owner_id)||pids.includes(p.id));
+ if(!PITCHES.length)return app.innerHTML="<h2>Espace terrain</h2><p class='muted'>Aucun terrain n'est rattaché à ce compte.</p>";
+ app.innerHTML=`<h2>Mon terrain</h2><select id="p">${PITCHES.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
+ <input type="date" id="d" value="${new Date().toISOString().slice(0,10)}"><div id="out"></div>`;
+ $('#p').onchange=render;$('#d').onchange=render;render()}
+function login(){
+ app.innerHTML=`<h2>Espace terrain</h2><input id="ph" type="tel" placeholder="+221 7X XXX XX XX"><button class="btn" id="s">Recevoir le code sur WhatsApp</button><div id="o"></div><p id="e" class="muted"></p>`;
+ $('#s').onclick=async()=>{const phone=$('#ph').value.replace(/\s/g,'');
+  const{error}=await sb.auth.signInWithOtp({phone,options:{channel:'whatsapp'}});if(error)return $('#e').textContent=error.message;
+  $('#o').innerHTML='<input id="c" inputmode="numeric" placeholder="Code reçu"><button class="btn" id="v">Valider</button>';
+  $('#v').onclick=async()=>{const{error}=await sb.auth.verifyOtp({phone,token:$('#c').value,type:'sms'});if(error)return $('#e').textContent=error.message;init()}}}
+async function render(){
+ const day=$('#d').value,p=PITCHES.find(x=>x.id===$('#p').value),next=new Date(new Date(day+'T00:00:00Z').getTime()+864e5).toISOString().slice(0,10);
+ const{data}=await sb.from('bookings').select('code,starts_at,duration_hours,status,total_price,commission_amount,profiles(first_name,last_name,phone)')
+  .eq('pitch_id',p.id).gte('starts_at',day+'T00:00:00Z').lt('starts_at',next+'T00:00:00Z').in('status',['confirmee','terminee','paiement_en_attente']).order('starts_at');
+ const bk=data||[],ok=bk.filter(b=>b.status!=='paiement_en_attente'),ca=ok.reduce((t,b)=>t+b.total_price,0),co=ok.reduce((t,b)=>t+b.commission_amount,0);
+ const{data:due}=await sb.from('owner_balances_due').select('amount_due');
+ const{data:po}=await sb.from('payouts').select('amount,status,created_at').order('created_at',{ascending:false}).limit(5);
+ const open=+p.opening_time.slice(0,2);let close=+p.closing_time.slice(0,2);if(close<=open)close+=24;let rows='';
+ for(let h=open;h<close;h++){const b=bk.find(x=>{const s=new Date(x.starts_at).getUTCHours();return h>=s&&h<s+x.duration_hours});
+  rows+=`<div class="row"><b>${hh(h)}</b>${b?`<span>${esc(b.profiles?.first_name)} ${esc(b.profiles?.last_name)} · ${esc(b.profiles?.phone)} · ${esc(b.code)} <span class="tag">${LB[b.status]}</span></span>`:'<span class="free">Libre</span>'}</div>`}
+ $('#out').innerHTML=`<div class="card kpi"><div><span class="muted">Réservations</span><b>${ok.length}</b></div><div><span class="muted">Chiffre d'affaires</span><b>${fcfa(ca)}</b></div>
+ <div><span class="muted">Commission FootTime</span><b>${fcfa(co)}</b></div><div><span class="muted">Revient au terrain</span><b>${fcfa(ca-co)}</b></div></div>
+ <div class="card"><b>Calendrier</b>${rows}</div>
+ <div class="card"><b>Reversements</b><p class="muted">À recevoir : ${fcfa((due||[]).reduce((t,x)=>t+ +x.amount_due,0))}</p>
+ ${(po||[]).map(x=>`<div class="row"><span>${new Date(x.created_at).toLocaleDateString('fr-FR')}</span><span>${fcfa(x.amount)} · ${esc(x.status)}</span></div>`).join('')||'<p class="muted">Aucun reversement pour le moment.</p>'}</div>`}
+init();
+</script></body></html>
