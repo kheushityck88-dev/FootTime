@@ -1,0 +1,102 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0B0F0E"><title>FootTime — Administration</title>
+<style>
+:root{--g:#16A34A;--gd:#0F6B38;--k:#0B0F0E;--c:#F7F8F5;--gr:#9CA3AF}
+*{box-sizing:border-box;margin:0}
+body{font-family:system-ui,sans-serif;background:var(--c);color:var(--k);padding-bottom:40px}
+header{background:var(--k);padding:10px 16px}header img{height:44px;display:block}
+main{padding:16px;max-width:620px;margin:auto}h2{margin:4px 0 6px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;margin:14px 0}.card>div{padding:14px}
+.muted{color:var(--gr);font-size:14px}
+label{display:block;margin-top:10px;font-size:14px;font-weight:600}
+input{width:100%;padding:12px;border:1px solid #d1d5db;border-radius:10px;margin:6px 0;font-size:16px;background:#fff}
+input[type=checkbox]{width:auto;margin:0 6px 0 0}
+.btn{background:var(--g);color:#fff;border:0;border-radius:10px;padding:14px;width:100%;font-size:16px;font-weight:600;margin-top:12px}
+.two{display:flex;gap:8px}.am{display:flex;flex-wrap:wrap;gap:14px;margin:8px 0}.am label{display:flex;align-items:center;margin:0;font-weight:400}
+.gal2{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}.gal2 span{position:relative}
+.gal2 img{width:84px;height:84px;object-fit:cover;border-radius:10px}
+.gal2 button{position:absolute;top:2px;right:2px;border:0;border-radius:99px;background:var(--k);color:#fff;width:22px;height:22px}
+.tag{display:inline-block;padding:2px 8px;border-radius:99px;background:#dcfce7;color:var(--gd);font-size:12px}
+</style></head><body>
+<header><img src="assets/logo.png" alt="FootTime"></header><main id="app"></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script>
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+const $=s=>document.querySelector(s),app=$('#app');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const AM={eclairage:'Éclairage',vestiaires:'Vestiaires',douches:'Douches',parking:'Parking'};
+
+async function init(){
+ const{data:{session}}=await sb.auth.getSession();
+ if(!session)return login();
+ const{data:me}=await sb.from('profiles').select('role').eq('id',session.user.id).single();
+ if(me?.role!=='ADMIN_FOOTTIME')return app.innerHTML="<h2>Accès réservé</h2><p class='muted'>Ce compte n'est pas administrateur FootTime.</p>";
+ load()}
+function login(){
+ app.innerHTML=`<h2>Administration</h2><input id="ph" type="tel" placeholder="+221 7X XXX XX XX"><button class="btn" id="s">Recevoir le code sur WhatsApp</button><div id="o"></div><p id="e" class="muted"></p>`;
+ $('#s').onclick=async()=>{const phone=$('#ph').value.replace(/\s/g,'');
+  const{error}=await sb.auth.signInWithOtp({phone,options:{channel:'whatsapp'}});if(error)return $('#e').textContent=error.message;
+  $('#o').innerHTML='<input id="c" inputmode="numeric" placeholder="Code reçu"><button class="btn" id="v">Valider</button>';
+  $('#v').onclick=async()=>{const{error}=await sb.auth.verifyOtp({phone,token:$('#c').value,type:'sms'});if(error)return $('#e').textContent=error.message;init()}}}
+
+const fcfa=n=>Number(n||0).toLocaleString('fr-FR')+' FCFA';
+async function stats(){
+ const[{count:pl},{data:bk},{data:pay},{data:due}]=await Promise.all([
+  sb.from('profiles').select('id',{count:'exact',head:true}).eq('role','JOUEUR'),
+  sb.from('bookings').select('status,commission_amount'),
+  sb.from('payments').select('status,amount,needs_refund'),
+  sb.from('owner_balances_due').select('amount_due')]);
+ const B=bk||[],ok=B.filter(b=>['confirmee','terminee'].includes(b.status)),n=x=>B.filter(b=>b.status===x).length,
+  paid=(pay||[]).filter(x=>x.status==='reussi'),sum=(a,f)=>a.reduce((t,x)=>t+f(x),0);
+ return `<div class="card"><div><b>Tableau de bord</b><p>Joueurs : ${pl??0} · Réservations confirmées ou terminées : ${ok.length} · Annulées : ${n('annulee')} · Expirées : ${n('expiree')}</p>
+ <p>Avances encaissées : ${fcfa(sum(paid,x=>x.amount))} · Commissions FootTime : ${fcfa(sum(ok,x=>x.commission_amount))}</p>
+ <p>À reverser aux terrains : ${fcfa(sum(due||[],x=>+x.amount_due))} · Remboursements à traiter : ${paid.filter(x=>x.needs_refund).length}</p></div></div>`}
+async function load(){
+ const[{data,error},{data:owners}]=await Promise.all([sb.from('pitches').select('*,pitch_photos(id,url,position)').order('created_at').order('id'),sb.from('owners').select('id,business_name,phone')]);
+ if(error)return app.innerHTML='<p>Chargement impossible.</p>';
+ app.innerHTML=await stats()+"<h2>Terrains de Kaolack</h2><p class='muted'>Renseigne chaque bloc, puis coche « Visible dans l'appli ».</p>";
+ data.forEach(p=>block(p,owners||[]))}
+function block(p,owners){
+ const ph=(p.pitch_photos||[]).sort((a,b)=>a.position-b.position),am=p.amenities||{};
+ const d=document.createElement('div');d.className='card';
+ d.innerHTML=`<div><span class="tag">${p.is_active?'Visible':'Brouillon'}</span>
+ <label>Nom du terrain</label><input class="nm" value="${esc(p.name.includes('(à renseigner)')?'':p.name)}">
+ <label>Propriétaire</label><select class="ow"><option value="">— choisir —</option>${owners.map(o=>`<option value="${o.id}" ${o.id===p.owner_id?'selected':''}>${esc(o.business_name)} (${esc(o.phone)})</option>`).join('')}</select>
+ <div class="two"><input class="on" placeholder="Nouveau propriétaire : nom"><input class="op2" type="tel" placeholder="Son téléphone"></div>
+ <label>Quartier</label><input class="di" value="${esc(p.district)}">
+ <label>Adresse</label><input class="ad" value="${esc(p.address)}">
+ <label>Localisation (coordonnées copiées depuis Google Maps)</label><input class="ll" placeholder="14.1520, -16.0720" value="${p.latitude!=null?p.latitude+', '+p.longitude:''}">
+ <label>Description</label><input class="de" value="${esc(p.description)}">
+ <label>Règles du terrain</label><input class="ru" value="${esc(p.rules)}">
+ <label>Prix par heure (FCFA)</label><input class="pr" type="number" min="1" value="${p.price_per_hour>1?p.price_per_hour:''}">
+ <label>Ouverture / Fermeture</label><div class="two"><input class="op" type="time" value="${p.opening_time.slice(0,5)}"><input class="cl" type="time" value="${p.closing_time.slice(0,5)}"></div>
+ <div class="am">${Object.keys(AM).map(k=>`<label><input type="checkbox" data-k="${k}" ${am[k]?'checked':''}>${AM[k]}</label>`).join('')}</div>
+ <label>Galerie photos</label><div class="gal2">${ph.map(x=>`<span><img src="${esc(x.url)}" alt=""><button data-x="${x.id}">×</button></span>`).join('')}</div>
+ <input class="fl" type="file" accept="image/*" multiple>
+ <label><input type="checkbox" class="ac" ${p.is_active?'checked':''}>Visible dans l'appli</label>
+ <button class="btn sv">Enregistrer</button><p class="muted ms"></p></div>`;
+ const q=x=>d.querySelector(x),ms=t=>q('.ms').textContent=t;
+ d.querySelectorAll('[data-x]').forEach(b=>b.onclick=async()=>{const{error}=await sb.from('pitch_photos').delete().eq('id',b.dataset.x);if(error)return ms(error.message);load()});
+ q('.sv').onclick=async()=>{
+  const name=q('.nm').value.trim(),price=+q('.pr').value,files=[...q('.fl').files],vis=q('.ac').checked;
+  let owner=q('.ow').value;
+  if(vis&&(!name||!(price>0)||(!ph.length&&!files.length)||!(owner||q('.on').value.trim())))return ms('Pour rendre le terrain visible : nom, prix, propriétaire et au moins une vraie photo sont requis.');
+  ms('Enregistrement…');
+  if(q('.on').value.trim()){const{data:oid,error:eo}=await sb.rpc('add_owner',{p_name:q('.on').value.trim(),p_phone:q('.op2').value});if(eo)return ms(eo.message);owner=oid}
+  const m=q('.ll').value.match(/(-?\d+(?:\.\d+)?)\s*[,; ]\s*(-?\d+(?:\.\d+)?)/);
+  let pos=ph.length?Math.max(...ph.map(x=>x.position))+1:0;
+  for(const f of files){
+   const path=`${p.id}/${Date.now()}-${pos}-${f.name.replace(/[^\w.]/g,'_')}`;
+   const{error:e1}=await sb.storage.from('pitch-photos').upload(path,f);if(e1)return ms(e1.message);
+   const{data:u}=sb.storage.from('pitch-photos').getPublicUrl(path);
+   const{error:e2}=await sb.from('pitch_photos').insert({pitch_id:p.id,url:u.publicUrl,position:pos++});if(e2)return ms(e2.message)}
+  const amenities={};d.querySelectorAll('[data-k]').forEach(c=>amenities[c.dataset.k]=c.checked);
+  const{error}=await sb.from('pitches').update({name:name||p.name,owner_id:owner||null,district:q('.di').value,address:q('.ad').value,
+   latitude:m?+m[1]:null,longitude:m?+m[2]:null,description:q('.de').value,rules:q('.ru').value,
+   price_per_hour:price>0?price:p.price_per_hour,opening_time:q('.op').value,closing_time:q('.cl').value,amenities,is_active:vis}).eq('id',p.id);
+  if(error)return ms(error.message);alert('Enregistré.');load()};
+ app.appendChild(d)}
+init();
+</script></body></html>

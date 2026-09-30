@@ -1,0 +1,148 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0B0F0E"><link rel="manifest" href="manifest.json">
+<link rel="icon" href="assets/icon-192.png"><title>FootTime</title>
+<style>
+:root{--g:#16A34A;--gd:#0F6B38;--k:#0B0F0E;--c:#F7F8F5;--gr:#9CA3AF}
+*{box-sizing:border-box;margin:0}
+body{font-family:system-ui,sans-serif;background:var(--c);color:var(--k);padding-bottom:72px}
+header{background:var(--k);padding:10px 16px}header img{height:44px;display:block}
+main{padding:16px;max-width:560px;margin:auto}h2{margin:4px 0 10px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;margin-bottom:14px;overflow:hidden}
+.card img{width:100%;height:150px;object-fit:cover;background:var(--k);display:block}.card>div{padding:12px}
+.muted{color:var(--gr);font-size:14px}
+.btn{background:var(--g);color:#fff;border:0;border-radius:10px;padding:14px;width:100%;font-size:16px;font-weight:600;margin-top:8px}
+.btn.dk{background:var(--k)}.btn:disabled{background:var(--gr)}
+.sl{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.sl button{padding:10px 14px;border-radius:8px;border:1px solid var(--g);background:#fff;color:var(--gd);font-size:15px}
+.sl button.on{background:var(--g);color:#fff}.sl button:disabled{border-color:#d1d5db;color:var(--gr);background:#f3f4f6}
+input,select{width:100%;padding:12px;border:1px solid #d1d5db;border-radius:10px;margin:6px 0;font-size:16px;background:#fff}
+nav{position:fixed;bottom:0;left:0;right:0;background:var(--k);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;background:0;border:0;color:var(--gr);padding:16px 0;font-size:14px}nav button.on{color:var(--g);font-weight:700}
+.tag{display:inline-block;padding:2px 8px;border-radius:99px;background:#dcfce7;color:var(--gd);font-size:12px}
+.hero{background:var(--k);color:#fff;border-radius:14px;padding:22px;margin-bottom:14px}
+.hero h1{font-size:28px;line-height:1.15}.hero span{color:var(--g)}
+.hero p{color:var(--gr);margin-top:10px;letter-spacing:.18em;font-size:12px;text-transform:uppercase}
+.loc{display:flex;align-items:center;gap:8px;color:var(--gd);font-weight:600;margin:4px 0}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--g)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.row{margin:10px 0}
+.gal{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;margin:12px 0}.gal img{height:200px;min-width:85%;object-fit:cover;border-radius:14px;scroll-snap-align:start;background:var(--k)}
+</style></head><body>
+<header><img src="assets/logo.png" alt="FootTime"></header>
+<main id="app"></main>
+<nav><button data-v="home" class="on">Accueil</button><button data-v="res">Réservations</button><button data-v="me">Profil</button></nav>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script>
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+const $=s=>document.querySelector(s),app=$('#app');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fcfa=n=>Number(n).toLocaleString('fr-FR')+' FCFA';
+const hh=h=>String(h%24).padStart(2,'0')+'h';
+const LB={paiement_en_attente:'Paiement en attente',confirmee:'Confirmée',terminee:'Terminée',annulee:'Annulée',expiree:'Expirée'};
+let user=null;
+function go(v){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));({home,res:reservations,me:profile})[v]()}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));
+
+let PITCHES=[];
+function freeHours(p,day,busy){
+ const open=+p.opening_time.slice(0,2);let close=+p.closing_time.slice(0,2);if(close<=open)close+=24;const out=[];
+ for(let h=open;h<close&&out.length<4;h++){const s=new Date(`${day}T00:00:00Z`);s.setUTCHours(h);const e=new Date(s.getTime()+36e5);
+  if(s>new Date()&&!busy.some(x=>new Date(x.starts_at)<e&&new Date(x.ends_at)>s))out.push(h)}
+ return out}
+async function home(){
+ app.innerHTML=`<div class="hero"><h1>Ton terrain.<br><span>Ton heure.</span><br>Ton match.</h1><p>Trouve. Réserve. Joue.</p></div>
+ <div class="loc"><span class="dot"></span>Kaolack</div>
+ <input id="q" type="search" placeholder="Rechercher un terrain…">
+ <div class="row"><b>Terrains disponibles</b></div><div id="list"><p class="muted">Chargement…</p></div>`;
+ const{data,error}=await sb.from('pitches').select('id,name,district,price_per_hour,opening_time,closing_time,pitch_photos(url,position),reviews(rating)').eq('is_active',true);
+ if(error)return $('#list').innerHTML='<p>Chargement impossible.</p>';
+ PITCHES=data;const today=new Date().toISOString().slice(0,10);
+ await Promise.all(PITCHES.map(async p=>{const{data:b}=await sb.rpc('get_busy_slots',{p_pitch:p.id,p_day:today});p.free=freeHours(p,today,b||[])}));
+ draw('');$('#q').oninput=e=>draw(e.target.value)}
+function draw(q){
+ q=q.trim().toLowerCase();const l=$('#list');l.innerHTML='';
+ const r=PITCHES.filter(p=>(p.name+' '+(p.district||'')).toLowerCase().includes(q));
+ if(!r.length){l.innerHTML='<p class="muted">Aucun terrain trouvé.</p>';return}
+ r.forEach(p=>{const ph=(p.pitch_photos||[]).sort((a,b)=>a.position-b.position)[0],n=(p.reviews||[]).length,
+  avg=n?(p.reviews.reduce((t,x)=>t+x.rating,0)/n).toFixed(1):null;
+  const d=document.createElement('div');d.className='card';d.style.cursor='pointer';
+  d.innerHTML=`<img ${ph?`src="${esc(ph.url)}"`:''} alt=""><div><b>${esc(p.name)}</b> ${avg?`<span class="muted">★ ${avg} (${n} avis)</span>`:''}<br>
+  <span class="muted">${esc(p.district)}</span><br><b>${fcfa(p.price_per_hour)}</b> / heure
+  <div class="chips">${p.free.length?p.free.map(h=>`<span class="tag">${hh(h)}</span>`).join(''):'<span class="muted">Aucun créneau libre aujourd\'hui</span>'}</div></div>`;
+  d.onclick=()=>pitch(p.id);l.appendChild(d)})}
+
+async function pitch(id){
+ const{data:p}=await sb.from('pitches').select('*,pitch_photos(url,position)').eq('id',id).single();
+ const{data:st}=await sb.from('app_settings').select('value').eq('key','deposit_amount').maybeSingle();
+ const{data:rv}=await sb.from('reviews').select('rating,comment').eq('pitch_id',id).eq('status','publie').order('created_at',{ascending:false}).limit(5);
+ const AM={eclairage:'Éclairage',vestiaires:'Vestiaires',douches:'Douches',parking:'Parking'},eq=Object.keys(AM).filter(k=>(p.amenities||{})[k]).map(k=>AM[k]).join(' · ');
+ const la=p.latitude,lo=p.longitude,map=la!=null&&lo!=null?`<iframe style="width:100%;height:200px;border:0;border-radius:14px;margin:10px 0" loading="lazy" src="https://www.openstreetmap.org/export/embed.html?bbox=${+lo-.004}%2C${+la-.003}%2C${+lo+.004}%2C${+la+.003}&layer=mapnik&marker=${la}%2C${lo}"></iframe><p><a href="https://www.google.com/maps?q=${la},${lo}" target="_blank" rel="noopener">Ouvrir dans Google Maps</a></p>`:'';
+ const extras=`${eq?`<p style="margin-top:12px"><b>Équipements :</b> ${eq}</p>`:''}${p.rules?`<p><b>Règles :</b> ${esc(p.rules)}</p>`:''}${map}${rv?.length?'<h3 style="margin-top:12px">Avis</h3>'+rv.map(r=>`<p>★ ${r.rating}/5 ${esc(r.comment||'')}</p>`).join(''):''}`;
+ const gal=(p.pitch_photos||[]).sort((a,b)=>a.position-b.position).map(x=>`<img src="${esc(x.url)}" alt="">`).join('');
+ app.innerHTML=`<button class="btn dk" onclick="home()">← Retour</button>
+ ${gal?`<div class="gal">${gal}</div>`:''}
+ <h2>${esc(p.name)}</h2><p class="muted">${esc(p.address||p.district)}</p><p>${esc(p.description||'')}</p>
+ <p><b>${fcfa(p.price_per_hour)}</b> / heure · ${p.opening_time.slice(0,5)}–${p.closing_time.slice(0,5)}</p>
+ <label>Date</label><input type="date" id="d" min="${new Date().toISOString().slice(0,10)}">
+ <label>Durée</label><select id="n">${[1,2,3,4].map(n=>`<option value="${n}">${n} h</option>`).join('')}</select>
+ <div class="sl" id="sl"></div><p id="sum"></p>
+ <label>Paiement de l'avance</label><select id="m"><option value="wave">Wave</option><option value="orange_money">Orange Money</option></select>
+ <p class="muted" style="margin:8px 0">Annulation remboursable dans les 5 h suivant la réservation et jusqu'à 1 h avant le match. Passé ce délai : pas d'annulation, 2 changements de date ou d'heure possibles, sans remboursement.</p>
+ <button class="btn" id="go" disabled>Réserver et payer l'avance</button><p id="msg" class="muted"></p>${extras}`;
+ let sel=null;const msg=t=>$('#msg').textContent=t;
+ async function slots(){
+  const day=$('#d').value,n=+$('#n').value;sel=null;$('#go').disabled=true;$('#sum').textContent='';
+  const sl=$('#sl');sl.innerHTML='';if(!day)return;
+  const{data:busy}=await sb.rpc('get_busy_slots',{p_pitch:id,p_day:day});
+  const open=+p.opening_time.slice(0,2);let close=+p.closing_time.slice(0,2);if(close<=open)close+=24;
+  for(let h=open;h+n<=close;h++){
+   const s=new Date(`${day}T00:00:00Z`);s.setUTCHours(h);const e=new Date(s.getTime()+n*36e5);
+   const taken=s<=new Date()||(busy||[]).some(b=>new Date(b.starts_at)<e&&new Date(b.ends_at)>s);
+   const b=document.createElement('button');b.textContent=hh(h);b.disabled=taken;
+   b.onclick=()=>{sl.querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on');sel=s;
+    const tot=p.price_per_hour*n,dep=Math.min(+(st?.value||0),tot);
+    $('#sum').innerHTML=`${hh(h)} → ${hh(h+n)} · Total <b>${fcfa(tot)}</b><br>Avance à payer : <b>${fcfa(dep)}</b> · Reste sur place : ${fcfa(tot-dep)}`;
+    $('#go').disabled=false};
+   sl.appendChild(b)}}
+ $('#d').onchange=slots;$('#n').onchange=slots;
+ $('#go').onclick=async()=>{
+  if(!user)return msg("Connectez-vous dans l'onglet Profil pour réserver.");
+  $('#go').disabled=true;msg('Réservation en cours…');
+  const{data,error}=await sb.functions.invoke('create-booking',{body:{pitch_id:id,starts_at:sel.toISOString(),duration_hours:+$('#n').value,payment_method:$('#m').value}});
+  if(error||!data?.checkout_url){let t='Erreur, réessayez.';try{t=(await error.context.json()).error||t}catch{}msg(t);$('#go').disabled=false;return}
+  location.href=data.checkout_url}}
+
+async function reservations(){
+ if(!user)return app.innerHTML="<p>Connectez-vous dans l'onglet Profil.</p>";
+ const{data}=await sb.from('bookings').select('id,code,starts_at,duration_hours,status,remaining_amount,modifications_count,pitch_id,pitches(name)').eq('player_id',user.id).order('starts_at',{ascending:false});
+ app.innerHTML='<h2>Mes réservations</h2>'+(data?.length?'':'<p class="muted">Aucune réservation.</p>');
+ (data||[]).forEach(b=>{const s=new Date(b.starts_at),h=s.getUTCHours();
+  app.insertAdjacentHTML('beforeend',`<div class="card"><div><b>${esc(b.pitches.name)}</b> <span class="tag">${LB[b.status]}</span><br>
+  ${s.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',timeZone:'UTC'})} · ${hh(h)} → ${hh(h+b.duration_hours)}<br>
+  Code ${esc(b.code)} · reste ${fcfa(b.remaining_amount)}<br><span class="muted">Changements restants : ${2-b.modifications_count}</span>
+  ${b.status==='terminee'?`<button class="btn dk" onclick="rateB('${b.id}','${b.pitch_id}')">Noter ce terrain</button>`:''}${b.status==='confirmee'?`<button class="btn dk" onclick="cancelB('${b.id}')">Annuler</button><button class="btn" onclick="changeB('${b.id}')">Changer la date ou l'heure</button>`:''}</div></div>`)})}
+const fail=e=>alert(e.code==='23P01'?'Ce créneau est déjà pris.':e.message);
+async function cancelB(id){if(!confirm('Annuler cette réservation ?'))return;const{error}=await sb.rpc('cancel_booking',{p_booking:id});if(error)return fail(error);alert('Réservation annulée. Avance remboursable.');reservations()}
+async function changeB(id){const d=prompt('Nouvelle date (AAAA-MM-JJ)'),h=d&&prompt("Nouvelle heure de début (0-23)");if(!d||h==null)return;
+ const{error}=await sb.rpc('change_booking_time',{p_booking:id,p_new_start:`${d}T${String(h).padStart(2,'0')}:00:00Z`});if(error)return fail(error);alert('Créneau modifié.');reservations()}
+
+async function rateB(id,pid){const r=+prompt('Note de 1 à 5');if(!(r>=1&&r<=5))return;const c=prompt('Commentaire (facultatif)')||null;
+ const{error}=await sb.from('reviews').insert({player_id:user.id,pitch_id:pid,booking_id:id,rating:r,comment:c});
+ if(error)return alert(error.code==='23505'?'Vous avez déjà noté cette réservation.':error.message);alert('Merci pour votre avis.')}
+
+async function profile(){
+ if(user){const{data:p}=await sb.from('profiles').select('first_name,last_name,phone').eq('id',user.id).single();
+  app.innerHTML=`<h2>${esc(p.first_name)} ${esc(p.last_name)}</h2><p class="muted">${esc(p.phone)}</p><button class="btn dk" id="lo">Se déconnecter</button>`;
+  $('#lo').onclick=async()=>{await sb.auth.signOut();user=null;go('home')};return}
+ app.innerHTML=`<h2>Connexion</h2><input id="fn" placeholder="Prénom"><input id="ln" placeholder="Nom"><input id="ph" type="tel" placeholder="+221 7X XXX XX XX"><button class="btn" id="s">Recevoir le code sur WhatsApp</button><div id="o"></div><p id="e" class="muted"></p>`;
+ $('#s').onclick=async()=>{const phone=$('#ph').value.replace(/\s/g,'');
+  const{error}=await sb.auth.signInWithOtp({phone,options:{channel:'whatsapp',data:{first_name:$('#fn').value,last_name:$('#ln').value}}});
+  if(error)return $('#e').textContent=error.message;
+  $('#o').innerHTML='<input id="c" inputmode="numeric" placeholder="Code reçu"><button class="btn" id="v">Valider</button>';
+  $('#v').onclick=async()=>{const{data,error}=await sb.auth.verifyOtp({phone,token:$('#c').value,type:'sms'});
+   if(error)return $('#e').textContent=error.message;user=data.user;go('home')}}}
+
+sb.auth.getSession().then(({data})=>{user=data.session?.user??null;home()});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
+</script></body></html>
