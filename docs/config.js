@@ -1,2 +1,1 @@
-// Renseigner les clés de votre projet Supabase (Settings > API)
-const SUPABASE_URL='https://VOTRE-PROJET.supabase.co',SUPABASE_ANON_KEY='VOTRE_CLE_ANON';
+const SUPABASE_URL='https://VOTRE-REF.supabase.co',SUPABASE_ANON_KEY='sb_publishable_H8G7ELV7anbCMYc321y56w_U82Rwazp';
