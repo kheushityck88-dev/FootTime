@@ -35,6 +35,17 @@ label{display:block;margin-top:8px;font-size:14px;font-weight:600}
 .kp{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}.kp div{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px;text-align:center}
 .kp b{display:block;font-size:22px;color:var(--gd)}
 .lk{display:block;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:10px;color:var(--k);text-decoration:none;font-weight:600}
+.hero2{background:var(--k);color:#fff;border-radius:18px;padding:22px 20px;margin-bottom:18px}
+.hero2 h1{font-size:28px;line-height:1.18;margin:12px 0 10px}.hero2 h1 span{color:var(--g)}
+.hero2 p{color:#cbd5d1;font-size:15px;line-height:1.5}
+.badge{display:inline-flex;align-items:center;gap:8px;border:1px solid #26332d;padding:4px 12px;border-radius:99px;font-size:13px;color:#d1fae5}
+.cta{display:grid;gap:10px;margin-top:16px}.cta .btn{margin-top:0}.btn.ghost{background:transparent;border:1.5px solid #fff;color:#fff}
+.st{margin:24px 0 10px;font-size:18px;display:flex;align-items:center;gap:8px}.st:before{content:'';width:4px;height:18px;border-radius:2px;background:var(--g)}
+.steps span{display:grid;gap:2px}.steps em{font-style:normal;color:#6b7280;font-size:14px;line-height:1.4}
+.why{display:grid;gap:10px}.why div{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:14px;display:grid;gap:4px}.why span{color:#6b7280;font-size:14px}
+details{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;margin-bottom:8px}summary{font-weight:600;cursor:pointer}
+details p{margin-top:8px;color:#6b7280;font-size:14px;line-height:1.5}
+.final{background:var(--k);color:#fff;border-radius:18px;padding:20px;margin:24px 0 4px;text-align:center}.final p{color:#cbd5d1;margin:8px 0 4px;font-size:14px}
 </style></head><body>
 <header><img src="assets/logo.png" alt="FootTime"></header>
 <main id="app"></main>
@@ -65,12 +76,32 @@ async function next(){
  <span>${s.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',timeZone:'UTC'})} · ${hh(h)} → ${hh(h+b.duration_hours)}</span>
  <span class="muted">Code ${esc(b.code)} · reste à payer sur place : ${fcfa(b.remaining_amount)}</span>
  <button class="btn" onclick="go('res')">Voir mes réservations</button></div>`}
+const IC=d=>`<svg viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="26" height="26">${d}</svg>`;
+const STEPS=`<h3 class="st">Comment ça marche</h3><div class="steps">
+<div><b>1</b><span><strong>Choisis ton terrain</strong><em>Photos, prix par heure, horaires, équipements et adresse : tout est sur la fiche du terrain.</em></span></div>
+<div><b>2</b><span><strong>Choisis ta date et ton heure</strong><em>Les heures libres s'affichent en direct. Tu peux réserver plusieurs heures de suite.</em></span></div>
+<div><b>3</b><span><strong>Paie une avance</strong><em>Avec Wave ou Orange Money. Le reste se paie directement sur place.</em></span></div>
+<div><b>4</b><span><strong>Reçois ton code et joue</strong><em>Ta réservation est confirmée avec un code. Montre-le au gérant en arrivant.</em></span></div></div>`;
+const WHY=`<h3 class="st">Pourquoi FootTime ?</h3><div class="why">
+<div>${IC('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>')}<b>Plus besoin d'appeler</b><span>Tu vois les créneaux libres directement, sans attendre une réponse.</span></div>
+<div>${IC('<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/>')}<b>Paiement simple</b><span>Wave ou Orange Money, depuis ton téléphone.</span></div>
+<div>${IC('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>')}<b>Réservation confirmée</b><span>Elle l'est dès que ton paiement est validé, avec un code à présenter sur place.</span></div></div>`;
+const FAQ=`<h3 class="st">Questions fréquentes</h3>
+<details><summary>Dois-je tout payer en ligne ?</summary><p>Non. Tu paies seulement une avance pour réserver. Le reste se règle sur place, au terrain.</p></details>
+<details><summary>Puis-je annuler ?</summary><p>Oui, avec remboursement de l'avance dans les 5 heures qui suivent ta réservation, et jusqu'à 1 heure avant le match.</p></details>
+<details><summary>Et si je ne peux plus venir à l'heure prévue ?</summary><p>Passé le délai d'annulation, tu peux changer la date ou l'heure jusqu'à 2 fois, sans remboursement.</p></details>
+<details><summary>Comment je me connecte ?</summary><p>Avec ton numéro de téléphone : tu reçois un code de confirmation, il n'y a pas de mot de passe à retenir.</p></details>`;
 async function home(){
  let first='';if(user){const{data:me}=await sb.from('profiles').select('first_name').eq('id',user.id).maybeSingle();first=me?.first_name||''}
- app.innerHTML=`<div class="hero"><h1>${first?`Salut ${esc(first)},<br>`:''}Ton terrain.<br><span>Ton heure.</span><br>Ton match.</h1><p>Trouve. Réserve. Joue.</p></div><div id="nx"></div>
- <div class="loc"><span class="dot"></span>Kaolack</div><input id="q" type="search" placeholder="Rechercher un terrain…">
- <div class="row"><b>Terrains disponibles</b></div><div id="list"><p class="muted">Chargement…</p></div>
- ${user?'':`<div class="row"><b>Comment ça marche</b></div><div class="steps"><div><b>1</b>Trouve ton terrain</div><div><b>2</b>Choisis ton heure et paie l'avance</div><div><b>3</b>Reçois ton code et joue</div></div>`}`;
+ const out=!user;
+ app.innerHTML=`<div class="hero2"><span class="badge"><span class="dot"></span>Kaolack</span>
+ <h1>${first?`Salut ${esc(first)} !<br>`:''}Réserve ton terrain de foot <span>en quelques clics.</span></h1>
+ <p>${out?"FootTime te montre les terrains de Kaolack, leurs prix et leurs heures libres. Tu choisis ton créneau, tu paies une petite avance avec Wave ou Orange Money, et ton terrain est réservé pour toi.":"Choisis ton terrain, vois les heures libres et réserve en quelques clics."}</p>
+ <div class="cta"><button class="btn" onclick="document.getElementById('list').scrollIntoView({behavior:'smooth'})">Voir les terrains</button>${out?`<button class="btn ghost" onclick="go('me')">Créer mon compte</button>`:''}</div></div>
+ <div id="nx"></div>${out?STEPS:''}
+ <h3 class="st">Terrains à Kaolack</h3><input id="q" type="search" placeholder="Rechercher un terrain…"><div id="list"><p class="muted">Chargement…</p></div>
+ ${out?WHY:''}${FAQ}
+ ${out?`<div class="final"><b>Prêt à jouer ?</b><p>Crée ton compte avec ton numéro de téléphone et reçois un code de confirmation.</p><button class="btn" onclick="go('me')">Créer mon compte</button></div>`:''}`;
  if(user)next();
  const{data,error}=await sb.from('pitches').select('id,name,district,price_per_hour,opening_time,closing_time,pitch_photos(url,position),reviews(rating)').eq('is_active',true);
  if(error)return $('#list').innerHTML='<p>Chargement impossible.</p>';
@@ -80,7 +111,7 @@ async function home(){
 function draw(q){
  q=q.trim().toLowerCase();const l=$('#list');l.innerHTML='';
  const r=PITCHES.filter(p=>(p.name+' '+(p.district||'')).toLowerCase().includes(q));
- if(!r.length){l.innerHTML='<p class="muted">Aucun terrain trouvé.</p>';return}
+ if(!r.length){l.innerHTML=`<p class="muted">${PITCHES.length?'Aucun terrain trouvé.':'Les premiers terrains de Kaolack arrivent bientôt.'}</p>`;return}
  r.forEach(p=>{const ph=(p.pitch_photos||[]).sort((a,b)=>a.position-b.position)[0],n=(p.reviews||[]).length,
   avg=n?(p.reviews.reduce((t,x)=>t+x.rating,0)/n).toFixed(1):null;
   const d=document.createElement('div');d.className='card';d.style.cursor='pointer';
