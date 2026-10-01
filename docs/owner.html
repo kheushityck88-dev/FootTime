@@ -12,6 +12,7 @@ input,select{width:100%;padding:12px;border:1px solid #d1d5db;border-radius:10px
 .row{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid #eef0ee;font-size:15px}.row:last-child{border:0}
 .free{color:var(--gr)}.tag{display:inline-block;padding:2px 8px;border-radius:99px;background:#dcfce7;color:var(--gd);font-size:12px}
 .kpi{display:grid;grid-template-columns:1fr 1fr;gap:10px}.kpi b{font-size:18px;display:block}
+.adm{background:#fef3c7;color:#92400e;border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:14px}.adm a{color:#0F6B38;font-weight:600}
 </style></head><body>
 <header><img src="assets/logo.png" alt="FootTime"></header><main id="app"></main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="config.js"></script>
@@ -24,14 +25,16 @@ let PITCHES=[];
 async function init(){
  const{data:{session}}=await sb.auth.getSession();if(!session)return login();
  const uid=session.user.id;
+ const{data:me}=await sb.from('profiles').select('role').eq('id',uid).single();const adm=me?.role==='ADMIN_FOOTTIME';
  const{data:ow}=await sb.from('owners').select('id').eq('user_id',uid);
  const{data:pm}=await sb.from('pitch_managers').select('pitch_id').eq('user_id',uid).eq('status','actif');
  const oids=(ow||[]).map(o=>o.id),pids=(pm||[]).map(m=>m.pitch_id);
  const{data:all}=await sb.from('pitches').select('id,name,owner_id,opening_time,closing_time');
- PITCHES=(all||[]).filter(p=>oids.includes(p.owner_id)||pids.includes(p.id));
+ PITCHES=(all||[]).filter(p=>adm||oids.includes(p.owner_id)||pids.includes(p.id));
  if(!PITCHES.length)return app.innerHTML="<h2>Espace terrain</h2><p class='muted'>Aucun terrain n'est rattaché à ce compte.</p>";
- app.innerHTML=`<h2>Mon terrain</h2><select id="p">${PITCHES.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
+ app.innerHTML=`${adm?'<div class="adm"><b>Vue administrateur</b><br>Tu vois exactement ce que voit le propriétaire de ce terrain. <a href="admin.html">← Retour à l\'administration</a></div>':''}<h2>${adm?'Vue propriétaire':'Mon terrain'}</h2><select id="p">${PITCHES.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
  <input type="date" id="d" value="${new Date().toISOString().slice(0,10)}"><div id="out"></div>`;
+ const pre=new URLSearchParams(location.search).get('pitch');if(pre&&PITCHES.some(p=>p.id===pre))$('#p').value=pre;
  $('#p').onchange=render;$('#d').onchange=render;render()}
 function login(){
  app.innerHTML=`<h2>Espace terrain</h2><input id="ph" type="tel" placeholder="+221 7X XXX XX XX"><button class="btn" id="s">Recevoir le code sur WhatsApp</button><div id="o"></div><p id="e" class="muted"></p>`;
@@ -44,8 +47,9 @@ async function render(){
  const{data}=await sb.from('bookings').select('code,starts_at,duration_hours,status,total_price,commission_amount,profiles(first_name,last_name,phone)')
   .eq('pitch_id',p.id).gte('starts_at',day+'T00:00:00Z').lt('starts_at',next+'T00:00:00Z').in('status',['confirmee','terminee','paiement_en_attente']).order('starts_at');
  const bk=data||[],ok=bk.filter(b=>b.status!=='paiement_en_attente'),ca=ok.reduce((t,b)=>t+b.total_price,0),co=ok.reduce((t,b)=>t+b.commission_amount,0);
- const{data:due}=await sb.from('owner_balances_due').select('amount_due');
- const{data:po}=await sb.from('payouts').select('amount,status,created_at').order('created_at',{ascending:false}).limit(5);
+ const oid=p.owner_id||'00000000-0000-0000-0000-000000000000';
+ const{data:due}=await sb.from('owner_balances_due').select('amount_due').eq('owner_id',oid);
+ const{data:po}=await sb.from('payouts').select('amount,status,created_at').eq('owner_id',oid).order('created_at',{ascending:false}).limit(5);
  const open=+p.opening_time.slice(0,2);let close=+p.closing_time.slice(0,2);if(close<=open)close+=24;let rows='';
  for(let h=open;h<close;h++){const b=bk.find(x=>{const s=new Date(x.starts_at).getUTCHours();return h>=s&&h<s+x.duration_hours});
   rows+=`<div class="row"><b>${hh(h)}</b>${b?`<span>${esc(b.profiles?.first_name)} ${esc(b.profiles?.last_name)} · ${esc(b.profiles?.phone)} · ${esc(b.code)} <span class="tag">${LB[b.status]}</span></span>`:'<span class="free">Libre</span>'}</div>`}
