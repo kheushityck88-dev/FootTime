@@ -27,6 +27,14 @@ nav button{flex:1;background:0;border:0;color:var(--gr);padding:16px 0;font-size
 .dot{width:9px;height:9px;border-radius:50%;background:var(--g)}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.row{margin:10px 0}
 .gal{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;margin:12px 0}.gal img{height:200px;min-width:85%;object-fit:cover;border-radius:14px;scroll-snap-align:start;background:var(--k)}
+label{display:block;margin-top:8px;font-size:14px;font-weight:600}
+.steps{display:grid;gap:8px;margin-bottom:14px}.steps div{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px;display:flex;gap:12px;align-items:center}
+.steps b{background:var(--g);color:#fff;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;flex:none}
+.next{background:var(--k);color:#fff;border-radius:14px;padding:16px;margin-bottom:14px;display:grid;gap:4px}.next .muted{color:var(--gr)}
+.pf{display:flex;gap:14px;align-items:center;margin-bottom:14px}.av{width:56px;height:56px;border-radius:50%;background:var(--g);color:#fff;display:grid;place-items:center;font-weight:700;font-size:20px;flex:none}
+.kp{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}.kp div{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px;text-align:center}
+.kp b{display:block;font-size:22px;color:var(--gd)}
+.lk{display:block;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:10px;color:var(--k);text-decoration:none;font-weight:600}
 </style></head><body>
 <header><img src="assets/logo.png" alt="FootTime"></header>
 <main id="app"></main>
@@ -50,11 +58,20 @@ function freeHours(p,day,busy){
  for(let h=open;h<close&&out.length<4;h++){const s=new Date(`${day}T00:00:00Z`);s.setUTCHours(h);const e=new Date(s.getTime()+36e5);
   if(s>new Date()&&!busy.some(x=>new Date(x.starts_at)<e&&new Date(x.ends_at)>s))out.push(h)}
  return out}
+async function next(){
+ const{data}=await sb.from('bookings').select('code,starts_at,duration_hours,remaining_amount,pitches(name)').eq('player_id',user.id).eq('status','confirmee').gt('starts_at',new Date().toISOString()).order('starts_at').limit(1);
+ const b=data?.[0];if(!b)return;const s=new Date(b.starts_at),h=s.getUTCHours();
+ $('#nx').innerHTML=`<div class="next"><span class="muted">Ton prochain match</span><b>${esc(b.pitches.name)}</b>
+ <span>${s.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',timeZone:'UTC'})} · ${hh(h)} → ${hh(h+b.duration_hours)}</span>
+ <span class="muted">Code ${esc(b.code)} · reste à payer sur place : ${fcfa(b.remaining_amount)}</span>
+ <button class="btn" onclick="go('res')">Voir mes réservations</button></div>`}
 async function home(){
- app.innerHTML=`<div class="hero"><h1>Ton terrain.<br><span>Ton heure.</span><br>Ton match.</h1><p>Trouve. Réserve. Joue.</p></div>
- <div class="loc"><span class="dot"></span>Kaolack</div>
- <input id="q" type="search" placeholder="Rechercher un terrain…">
- <div class="row"><b>Terrains disponibles</b></div><div id="list"><p class="muted">Chargement…</p></div>`;
+ let first='';if(user){const{data:me}=await sb.from('profiles').select('first_name').eq('id',user.id).maybeSingle();first=me?.first_name||''}
+ app.innerHTML=`<div class="hero"><h1>${first?`Salut ${esc(first)},<br>`:''}Ton terrain.<br><span>Ton heure.</span><br>Ton match.</h1><p>Trouve. Réserve. Joue.</p></div><div id="nx"></div>
+ <div class="loc"><span class="dot"></span>Kaolack</div><input id="q" type="search" placeholder="Rechercher un terrain…">
+ <div class="row"><b>Terrains disponibles</b></div><div id="list"><p class="muted">Chargement…</p></div>
+ ${user?'':`<div class="row"><b>Comment ça marche</b></div><div class="steps"><div><b>1</b>Trouve ton terrain</div><div><b>2</b>Choisis ton heure et paie l'avance</div><div><b>3</b>Reçois ton code et joue</div></div>`}`;
+ if(user)next();
  const{data,error}=await sb.from('pitches').select('id,name,district,price_per_hour,opening_time,closing_time,pitch_photos(url,position),reviews(rating)').eq('is_active',true);
  if(error)return $('#list').innerHTML='<p>Chargement impossible.</p>';
  PITCHES=data;const today=new Date().toISOString().slice(0,10);
@@ -131,17 +148,29 @@ async function rateB(id,pid){const r=+prompt('Note de 1 à 5');if(!(r>=1&&r<=5))
  const{error}=await sb.from('reviews').insert({player_id:user.id,pitch_id:pid,booking_id:id,rating:r,comment:c});
  if(error)return alert(error.code==='23505'?'Vous avez déjà noté cette réservation.':error.message);alert('Merci pour votre avis.')}
 
-async function profile(){
- if(user){const{data:p}=await sb.from('profiles').select('first_name,last_name,phone').eq('id',user.id).single();
-  app.innerHTML=`<h2>${esc(p.first_name)} ${esc(p.last_name)}</h2><p class="muted">${esc(p.phone)}</p><button class="btn dk" id="lo">Se déconnecter</button>`;
-  $('#lo').onclick=async()=>{await sb.auth.signOut();user=null;go('home')};return}
- app.innerHTML=`<h2>Connexion</h2><input id="fn" placeholder="Prénom"><input id="ln" placeholder="Nom"><input id="ph" type="tel" placeholder="+221 7X XXX XX XX"><button class="btn" id="s">Recevoir le code sur WhatsApp</button><div id="o"></div><p id="e" class="muted"></p>`;
+function loginForm(){
+ app.innerHTML=`<h2>Connexion</h2><p class="muted" style="margin-bottom:8px">Entre ton numéro, tu reçois un code de confirmation.</p><input id="fn" placeholder="Prénom"><input id="ln" placeholder="Nom"><input id="ph" type="tel" placeholder="+221 7X XXX XX XX"><button class="btn" id="s">Recevoir le code sur WhatsApp</button><div id="o"></div><p id="e" class="muted"></p>`;
  $('#s').onclick=async()=>{const phone=$('#ph').value.replace(/\s/g,'');
   const{error}=await sb.auth.signInWithOtp({phone,options:{channel:'whatsapp',data:{first_name:$('#fn').value,last_name:$('#ln').value}}});
   if(error)return $('#e').textContent=error.message;
   $('#o').innerHTML='<input id="c" inputmode="numeric" placeholder="Code reçu"><button class="btn" id="v">Valider</button>';
   $('#v').onclick=async()=>{const{data,error}=await sb.auth.verifyOtp({phone,token:$('#c').value,type:'sms'});
    if(error)return $('#e').textContent=error.message;user=data.user;go('home')}}}
+async function profile(){
+ if(!user)return loginForm();
+ const{data:p}=await sb.from('profiles').select('first_name,last_name,phone,role').eq('id',user.id).single();
+ const{data:b}=await sb.from('bookings').select('status,starts_at').eq('player_id',user.id);
+ const B=b||[],up=B.filter(x=>x.status==='confirmee'&&new Date(x.starts_at)>new Date()).length,pl=B.filter(x=>x.status==='terminee').length;
+ const ini=((p.first_name||'?')[0]+(p.last_name||'')[0]).toUpperCase();
+ const links=[...(['PROPRIETAIRE','GESTIONNAIRE','ADMIN_FOOTTIME'].includes(p.role)?[['owner.html','Mon espace terrain']]:[]),...(p.role==='ADMIN_FOOTTIME'?[['admin.html','Administration FootTime']]:[])];
+ app.innerHTML=`<div class="pf"><div class="av">${esc(ini)}</div><div><h2>${esc(p.first_name)} ${esc(p.last_name)}</h2><span class="muted">${esc(p.phone)}</span></div></div>
+ <div class="kp"><div><b>${up}</b><span class="muted">À venir</span></div><div><b>${pl}</b><span class="muted">Matchs joués</span></div><div><b>${B.length}</b><span class="muted">Réservations</span></div></div>
+ <div class="card"><div><b>Mes informations</b><label>Prénom</label><input id="pf1" value="${esc(p.first_name)}"><label>Nom</label><input id="pf2" value="${esc(p.last_name)}"><button class="btn" id="sv">Enregistrer</button><p id="pm" class="muted"></p></div></div>
+ <div class="card"><div><b>Règles de réservation</b><p class="muted" style="margin-top:6px">Annulation remboursable dans les 5 h suivant la réservation et jusqu'à 1 h avant le match. Ensuite : 2 changements de date ou d'heure possibles, sans remboursement.</p></div></div>
+ ${links.map(([u,t])=>`<a class="lk" href="${u}">${t} →</a>`).join('')}<button class="btn dk" id="lo">Se déconnecter</button>`;
+ $('#sv').onclick=async()=>{const{error}=await sb.from('profiles').update({first_name:$('#pf1').value.trim(),last_name:$('#pf2').value.trim()}).eq('id',user.id);
+  $('#pm').textContent=error?error.message:'Informations enregistrées.'};
+ $('#lo').onclick=async()=>{await sb.auth.signOut();user=null;go('home')}}
 
 sb.auth.getSession().then(({data})=>{user=data.session?.user??null;home()});
 if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
