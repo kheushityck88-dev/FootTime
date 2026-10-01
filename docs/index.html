@@ -1,7 +1,7 @@
 <!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0B0F0E"><link rel="manifest" href="manifest.json">
-<link rel="icon" href="assets/icon-192.png"><title>FootTime</title>
+<link rel="icon" href="assets/icon-192.png"><link rel="apple-touch-icon" href="assets/icon-192.png"><title>FootTime</title>
 <style>
 :root{--g:#16A34A;--gd:#0F6B38;--k:#0B0F0E;--c:#F7F8F5;--gr:#9CA3AF}
 *{box-sizing:border-box;margin:0}
@@ -97,7 +97,7 @@ async function home(){
  app.innerHTML=`<div class="hero2"><span class="badge"><span class="dot"></span>Kaolack</span>
  <h1>${first?`Salut ${esc(first)} !<br>`:''}Réserve ton terrain de foot <span>en quelques clics.</span></h1>
  <p>${out?"FootTime te montre les terrains de Kaolack, leurs prix et leurs heures libres. Tu choisis ton créneau, tu paies une petite avance avec Wave ou Orange Money, et ton terrain est réservé pour toi.":"Choisis ton terrain, vois les heures libres et réserve en quelques clics."}</p>
- <div class="cta"><button class="btn" onclick="document.getElementById('list').scrollIntoView({behavior:'smooth'})">Voir les terrains</button>${out?`<button class="btn ghost" onclick="go('me')">Créer mon compte</button>`:''}</div></div>
+ <div class="cta"><button class="btn" onclick="document.getElementById('list').scrollIntoView({behavior:'smooth'})">Voir les terrains</button></div></div>
  <div id="nx"></div>${out?STEPS:''}
  <h3 class="st">Terrains à Kaolack</h3><input id="q" type="search" placeholder="Rechercher un terrain…"><div id="list"><p class="muted">Chargement…</p></div>
  ${out?WHY:''}${FAQ}
