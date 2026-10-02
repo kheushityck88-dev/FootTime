@@ -54,7 +54,7 @@ async function init(){
  <div class="nav"><button id="pv">◀</button><b id="dl"></b><button id="nx">▶</button><button id="td">Aujourd'hui</button></div>
  <div id="wk" class="wk"></div>
  <div class="legend"><span><i class="lf"></i>Libre</span><span><i class="lb"></i>Réservé</span><span><i class="lw"></i>Paiement en attente</span><span><i class="ld"></i>Match terminé</span><span><i class="lp"></i>Heure passée</span></div>
- <div id="out"></div>`;
+ <p id="nt" class="muted"></p><div id="out"></div>`;
  const pre=new URLSearchParams(location.search).get('pitch');if(pre&&PITCHES.some(p=>p.id===pre))$('#p').value=pre;
  $('#p').onchange=render;$('#pv').onclick=()=>{DAY=addD(DAY,-1);render()};$('#nx').onclick=()=>{DAY=addD(DAY,1);render()};$('#td').onclick=()=>{DAY=dstr(new Date());render()};
  render()}
@@ -69,25 +69,27 @@ async function render(){
  const p=PITCHES.find(x=>x.id===$('#p').value);$('#pt').textContent=p.name;
  $('#dl').textContent=new Date(DAY+'T00:00:00Z').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',timeZone:'UTC'});
  const ws=weekStart(DAY),oid=p.owner_id||'00000000-0000-0000-0000-000000000000';
- const[{data},{data:due},{data:po}]=await Promise.all([
-  sb.from('bookings').select('code,starts_at,duration_hours,status,total_price,remaining_amount,commission_amount,profiles(first_name,last_name,phone)')
-   .eq('pitch_id',p.id).gte('starts_at',ws+'T00:00:00Z').lt('starts_at',addD(ws,7)+'T00:00:00Z').in('status',['confirmee','terminee','paiement_en_attente']).order('starts_at'),
+ const[{data},{data:due},{data:po},{data:tot}]=await Promise.all([
+  sb.from('bookings').select('code,starts_at,duration_hours,status,remaining_amount,owner_amount,profiles(first_name,last_name,phone)')
+   .eq('pitch_id',p.id).gte('starts_at',ws+'T00:00:00Z').lt('starts_at',addD(ws,8)+'T00:00:00Z').in('status',['confirmee','terminee','paiement_en_attente']).order('starts_at'),
   sb.from('owner_balances_due').select('amount_due').eq('owner_id',oid),
-  sb.from('payouts').select('amount,status,created_at').eq('owner_id',oid).order('created_at',{ascending:false}).limit(5)]);
- const B=data||[],open=+p.opening_time.slice(0,2);let close=+p.closing_time.slice(0,2);if(close<=open)close+=24;const total=close-open;
- const onDay=s=>B.filter(b=>b.starts_at.slice(0,10)===s),paidH=a=>a.filter(b=>b.status!=='paiement_en_attente').reduce((t,b)=>t+b.duration_hours,0);
+  sb.from('payouts').select('amount,status,created_at').eq('owner_id',oid).order('created_at',{ascending:false}).limit(5),
+  sb.from('bookings').select('starts_at,owner_amount,remaining_amount').eq('pitch_id',p.id).eq('status','terminee')]);
+ const B=data||[],open=+p.opening_time.slice(0,2);let close=+p.closing_time.slice(0,2);if(close<=open)close+=24;const total=close-open;$('#nt').textContent=close>24?`Les heures après minuit (${hh(24)} à ${hh(close-1)}) font partie de la journée du terrain.`:'';
+ const off=(b,s)=>(new Date(b.starts_at).getTime()-new Date(s+'T00:00:00Z').getTime())/36e5,onDay=s=>B.filter(b=>{const o=off(b,s);return o>=open&&o<close}),paidH=a=>a.filter(b=>b.status!=='paiement_en_attente').reduce((t,b)=>t+b.duration_hours,0);
  $('#wk').innerHTML=[...Array(7)].map((_,i)=>{const s=addD(ws,i),h=paidH(onDay(s)),d=new Date(s+'T00:00:00Z');
   return `<button class="dy${s===DAY?' on':''}${s===dstr(new Date())?' td':''}" data-d="${s}"><small>${d.toLocaleDateString('fr-FR',{weekday:'short',timeZone:'UTC'})}</small><b>${d.getUTCDate()}</b><span class="bar"><i style="width:${Math.min(100,Math.round(h/total*100))}%"></i></span><small>${h} h</small></button>`}).join('');
  document.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{DAY=b.dataset.d;render()});
  const day=onDay(DAY),cov=new Set(),now=new Date();let tl='';
- day.forEach(b=>{const s=new Date(b.starts_at).getUTCHours();for(let k=0;k<b.duration_hours;k++)cov.add(s+k)});
+ day.forEach(b=>{const s=off(b,DAY);for(let k=0;k<b.duration_hours;k++)cov.add(s+k)});
  for(let h=open;h<close;h++){const r=h-open+1;tl+=`<div class="hl" style="grid-row:${r}">${hh(h)}</div>`;
   if(!cov.has(h)){const st=new Date(DAY+'T00:00:00Z');st.setUTCHours(h);const past=st.getTime()+36e5<=now.getTime();tl+=`<div class="fr${past?' ps':''}" style="grid-row:${r}">${past?'':'Libre'}</div>`}}
- day.forEach(b=>{const s=new Date(b.starts_at).getUTCHours(),n=b.duration_hours,c=b.status==='paiement_en_attente'?'wt':b.status==='terminee'?'dn':'';
+ day.forEach(b=>{const s=off(b,DAY),n=b.duration_hours,c=b.status==='paiement_en_attente'?'wt':b.status==='terminee'?'dn':'';
   tl+=`<div class="ev ${c}" style="grid-row:${s-open+1}/span ${n}"><b>${esc(b.profiles?.first_name)} ${esc(b.profiles?.last_name)}</b><span>${hh(s)} → ${hh(s+n)} · ${esc(b.code)}</span><span><a href="tel:${esc(b.profiles?.phone)}">${esc(b.profiles?.phone)}</a>${b.status==='paiement_en_attente'?' · paiement en cours':' · reste à encaisser '+fcfa(b.remaining_amount)}</span></div>`});
- const ok=day.filter(b=>b.status!=='paiement_en_attente'),ca=ok.reduce((t,b)=>t+b.total_price,0),co=ok.reduce((t,b)=>t+b.commission_amount,0),h=paidH(day);
+ const ok=day.filter(b=>b.status!=='paiement_en_attente'),net=b=>b.owner_amount+b.remaining_amount,done=day.filter(b=>b.status==='terminee').reduce((t,b)=>t+net(b),0),soon=day.filter(b=>b.status==='confirmee').reduce((t,b)=>t+net(b),0),h=paidH(day),T=tot||[],tn=a=>a.reduce((t,b)=>t+b.owner_amount+b.remaining_amount,0),mo=new Date().toISOString().slice(0,7);
  $('#out').innerHTML=`<div class="tl">${tl}</div>
- <div class="card"><b>Résumé de la journée</b><div class="kp" style="margin-top:10px"><div><small>Réservations</small><b>${ok.length}</b></div><div><small>Occupation</small><b>${Math.round(h/total*100)} %</b></div><div><small>Chiffre d'affaires</small><b>${fcfa(ca)}</b></div><div><small>Revient au terrain</small><b>${fcfa(ca-co)}</b><small>dont commission FootTime : ${fcfa(co)}</small></div></div></div>
+ <div class="card"><b>Résumé de la journée</b><div class="kp" style="margin-top:10px"><div><small>Réservations</small><b>${ok.length}</b></div><div><small>Occupation</small><b>${Math.round(h/total*100)} %</b></div><div><small>Total encaissé</small><b>${fcfa(done)}</b><small>matchs terminés</small></div><div><small>À venir</small><b>${fcfa(soon)}</b><small>réservations confirmées</small></div></div></div>
+ <div class="card"><b>Mes totaux</b><div class="kp" style="margin-top:10px"><div><small>Ce mois-ci</small><b>${fcfa(tn(T.filter(b=>b.starts_at.slice(0,7)===mo)))}</b></div><div><small>Depuis le début</small><b>${fcfa(tn(T))}</b><small>${T.length} match(s) joué(s)</small></div></div><p class="muted" style="margin-top:8px">Comprend ce que FootTime te reverse et ce que tu encaisses sur place.</p></div>
  <div class="card"><b>Reversements</b><p class="muted" style="margin:4px 0 8px">À recevoir : ${fcfa((due||[]).reduce((t,x)=>t+ +x.amount_due,0))}</p>
  ${(po||[]).map(x=>`<div class="row"><span>${new Date(x.created_at).toLocaleDateString('fr-FR')}</span><span>${fcfa(x.amount)} · ${esc(x.status)}</span></div>`).join('')||'<p class="muted">Aucun reversement pour le moment.</p>'}</div>`}
 init();
